@@ -10,7 +10,7 @@
 #include "offsets.h"
 
 
-#define MAX_LIST_SIZE 500
+#define MAX_LIST_SIZE 10000//lol
 
 HINSTANCE DllHandle;
 DWORD BASE;
@@ -22,6 +22,9 @@ endScene pEndScene;
 
 typedef unsigned int(__stdcall* loopTop)(int a1, int a2, int start);
 loopTop pLoopTop;
+
+
+
 
 LPD3DXFONT font;
 ID3DXLine* line;
@@ -81,18 +84,15 @@ struct position_matrix {
 };
 
 struct exodus_naitive_trigger {
-    DWORD unkown1[3];
-    position_matrix position;
+    /*+0x000*/ DWORD unkown1[3];
+    /*+0x00C*/ position_matrix position;//from 0xC to 0x48
+    /*+0x04C*/
 };
 
 int trigger_count = 0;
-
-
 struct exodus_trigger trigger_list[MAX_LIST_SIZE];
 
-DWORD a_view_matrix = 0x609AD4B0;
 
-DWORD a_hook_loop_top = 0x601CF730;//top of func a3 should be the thing we need
 
 
 
@@ -152,8 +152,7 @@ int ww, wh;//height and width of the window
 const char* credits = "Made by skyrimfus. Thanks to Heebo for helping me figure out rotations. D3D hook by CasualGamer";
 
 bool WorldToScreen(vec3 pos, float* matrix, vec2 &out, int windowWidth, int windowHeight) {
-    //windowHeight = 649;
-    //windowWidth = 942;
+    
     struct vec4 clipCoords;
     clipCoords.x = pos.x * matrix[0]  + pos.y * matrix[1]  + pos.z * matrix[2]  + matrix[3];
     clipCoords.y = pos.x * matrix[4]  + pos.y * matrix[5]  + pos.z * matrix[6]  + matrix[7];
@@ -382,11 +381,15 @@ DWORD __stdcall EjectThread(LPVOID lpParameter) {
 }
 
 DWORD WINAPI Menue(HINSTANCE hModule) {
+
+    BASE = (DWORD)GetModuleHandleA(NULL);
     AllocConsole();
     FILE* fp;
     freopen_s(&fp, "CONOUT$", "w", stdout); //sets cout to be used with our newly created console
 
     hookEndScene();
+
+    bool bVmPatched = false;
 
     while (true) {
         Sleep(50);
@@ -396,11 +399,10 @@ DWORD WINAPI Menue(HINSTANCE hModule) {
             break;
         }
 
-        if (GetAsyncKeyState(VK_F2)) {
-            std::cout << "enter width:\n";
-            std::cin >> ww;
-            std::cout << "enter height:\n";
-            std::cin >> wh;
+        if (!bVmPatched && GetAsyncKeyState(VK_F2)) {
+            std::cout << "This may fix the display, but I am not sure how many other things it will break\n";
+            *(DWORD*)a_VM_FIX_PATCH = 0x0004B866;//mov ax,4
+            bVmPatched = true;
         }
     }
     std::cout << "ight imma head out" << std::endl;
