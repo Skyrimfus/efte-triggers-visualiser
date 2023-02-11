@@ -10,6 +10,8 @@
 #include "offsets.h"
 
 
+#define MAX_LIST_SIZE 500
+
 HINSTANCE DllHandle;
 DWORD BASE;
 
@@ -84,7 +86,9 @@ struct exodus_naitive_trigger {
 };
 
 int trigger_count = 0;
-struct exodus_trigger trigger_list[500];
+
+
+struct exodus_trigger trigger_list[MAX_LIST_SIZE];
 
 DWORD a_view_matrix = 0x609AD4B0;
 
@@ -108,9 +112,9 @@ unsigned int __stdcall hookedLoopTop(int a1, int a2, int a3) {//a3 is what we ne
 
 
     trigger_count = 0;
-    if (size > 499) {
+    if (size > MAX_LIST_SIZE) {
         while (true) {
-            std::cout << "error calculated size bigger than size of list\n";
+            std::cout << "error calculated size ("<< size << ") is bigger than the array \n";
         }
     }
     for (int i = 0; i < size-1 ; i++) {
