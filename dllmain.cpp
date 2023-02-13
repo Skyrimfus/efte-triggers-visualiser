@@ -42,14 +42,17 @@ struct sSettings {
     bool bDraw;//controls whether the triggers should be drawn or not
     bool bDrawOffscreen;//should we draw points that go offscreen?
     bool bDebug; //enable debug info, limit to 1 line render on only 1 trigger(the first)
+    bool bUseOldSchoolRendering;//use simple line draws instead of recursive one
     int line_width;
     float maxRenderDistance;
+
 };
 
 sSettings settings = {
     true,//bDraw
     true,//bDrawOffscreen
     false,//bDebug
+    false,
     5,//line_width
     -STEP_DEFAULT,//maxRenderDistance
 };
@@ -111,9 +114,9 @@ struct exodus_trigger {
     vec3 scale;
     float rotation;
     float distance;
-  
+
     int32_t triggered;
-  
+
     char ID[100] = "UNKOWN_ID";
     char type[100] = "UNKOWN_TYPE";
 
@@ -159,8 +162,8 @@ float Get3Ddistance(vec3* a, vec3* b) {
 
 unsigned int __stdcall hookedLoopTop(int a1, int a2, int a3) {//a3 is what we need
     int v4, size;
-
-
+    
+    
     if (!settings.bDraw || !a3)
         return pLoopTop(a1, a2, a3);//call original
 
@@ -180,8 +183,8 @@ unsigned int __stdcall hookedLoopTop(int a1, int a2, int a3) {//a3 is what we ne
             std::cout << "error calculated size (" << size << ") is bigger than the array \n";
         }
     }
-  
-    vec3 playerpos = {0, 0, 0};
+
+    vec3 playerpos = { 0, 0, 0 };
     if (*(int*)a_player_pos && **(int**)a_player_pos) {
         float* playerpos_tmp = (float*)((**(int**)a_player_pos) + 0x228);
 
@@ -195,7 +198,6 @@ unsigned int __stdcall hookedLoopTop(int a1, int a2, int a3) {//a3 is what we ne
         exodus_naitive_trigger* sensor = naitive_list[i];
         if (!sensor)
             continue;
-
 
 
         trigger_list[i].distance = Get3Ddistance(&playerpos, &(sensor->position.origin));
@@ -219,8 +221,8 @@ unsigned int __stdcall hookedLoopTop(int a1, int a2, int a3) {//a3 is what we ne
         if (sensor->sens) {
             exodus_naitive_sens* sens = *(sensor->sens);
             if (sens) {
-                strcpy_s(trigger_list[i].ID  , 99, sens->string_id);
-                strcpy_s(trigger_list[i].type, 99, sens->string_type);                
+                strcpy_s(trigger_list[i].ID, 99, sens->string_id);
+                strcpy_s(trigger_list[i].type, 99, sens->string_type);
 
             }
         }
@@ -270,11 +272,7 @@ bool WorldToScreen(vec3 pos, float* matrix, vec2& out, int windowWidth, int wind
     out.y = -(windowHeight / 2 * NDC.y) + (NDC.y + windowHeight / 2);
 
     if (clipCoords.w < MIN_W) {
-        if (settings.bDebug) {
-            printf("W2S FALSE -- X:%.2f, %Y:.%2f NDC.Z = %.2f\n", out.x, out.y, NDC.z);
-            return true;
-
-        }
+        //printf("W2S FALSE -- X:%.2f, %Y:.%2f NDC.Z = %.2f  w:%.2f\n", out.x, out.y, NDC.z, clipCoords.w);
         return false;
     }
 
@@ -301,8 +299,13 @@ void rotate_y(vec3& point, vec3 pivot, float rotation) {
     point.z = n.z;
 }
 
-
-void findScreenPosition(vec3 good, vec3 bad, vec2 &out) {
+/// <summary>
+/// Try to find a good screen position on a 3d line and write out
+/// </summary>
+/// <param name="good">A vec3 that is inside the screen space(start of the line)</param>
+/// <param name="bad">A vec3 that is outside the screen space(end of the line)</param>
+/// <param name="out">Outgoing screen poistion</param>
+void findScreenPosition(vec3 good, vec3 bad, vec2& out) {
     vec2 sc;
     if (WorldToScreenW(bad, sc)) {
         out.x = sc.x;
@@ -321,8 +324,8 @@ void findScreenPosition(vec3 good, vec3 bad, vec2 &out) {
 }
 
 void drawLine(vec2 a, vec2 b, D3DCOLOR color) {
-    if (settings.bDebug && !(a.x >= 0 && a.x <= ww && a.y >= 0 && a.y <= wh && b.x >= 0 && b.x <= ww && b.y >= 0 && b.y <= wh))
-        printf("x1: %.2f, y1: %.2f  ---  x2: %.2f, y2: %.2f  --- W:%i, %H:%i\n", a.x, a.y, b.x, b.y, ww, wh);
+    //if (settings.bDebug && !(a.x >= 0 && a.x <= ww && a.y >= 0 && a.y <= wh && b.x >= 0 && b.x <= ww && b.y >= 0 && b.y <= wh))
+        //printf("x1: %.2f, y1: %.2f  ---  x2: %.2f, y2: %.2f  --- W:%i, %H:%i\n", a.x, a.y, b.x, b.y, ww, wh);
     if (!settings.bDrawOffscreen && !(a.x >= 0 && a.x <= ww && a.y >= 0 && a.y <= wh && b.x >= 0 && b.x <= ww && b.y >= 0 && b.y <= wh))
         return;
 
@@ -333,13 +336,13 @@ void drawLine(vec2 a, vec2 b, D3DCOLOR color) {
 void drawLine3D(vec3 a, vec3 b, D3DCOLOR color) {
     vec2 a_out, b_out;
     bool w2s_a, w2s_b;
-    
+
     w2s_a = WorldToScreenW(a, a_out);
     w2s_b = WorldToScreenW(b, b_out);
 
-    if (!w2s_a && !w2s_b)
+    if (!w2s_a && !w2s_b)//this scenario can skip rendering of good lines, maybe add more checks for the middle of the line?
         return;
-    if (w2s_a && w2s_b) {
+    if (w2s_a && w2s_b) {//both points visible so just draw it normally
         drawLine(a_out, b_out, color);
         return;
     }
@@ -360,6 +363,7 @@ void drawLine3D(vec3 a, vec3 b, D3DCOLOR color) {
     findScreenPosition(good_point, bad_point, screen);
 
     drawLine(screen, good_screen, color);
+
 }
 
 
@@ -407,67 +411,63 @@ void drawBoxRotated(vec3 RightTopFront, vec3 LeftBottomBack, vec3 pivot, vec3 sc
 
 
         rotate_y(points[i], pivot, rotation);
-        if (!settings.bDebug)
-            w2s[i] = WorldToScreenW(points[i], sc[i]);
+        w2s[i] = WorldToScreenW(points[i], sc[i]);
     }
 
-    if (settings.bDebug) {
-        w2s[6] = true;
-        WorldToScreenW(points[6], sc[6]);
 
-        w2s[1] = true;
-        WorldToScreenW(points[1], sc[1]);
+
+
+    if(settings.bUseOldSchoolRendering){
+        if (!settings.bDebug) {
+
+            if (w2s[0] && w2s[1]) { drawLine(sc[0], sc[1], color); }
+            if (w2s[2] && w2s[1]) { drawLine(sc[2], sc[1], color); }
+            if (w2s[2] && w2s[7]) { drawLine(sc[2], sc[7], color); }
+            if (w2s[7] && w2s[0]) { drawLine(sc[7], sc[0], color); }
+
+
+
+            if (w2s[7] && w2s[3]) { drawLine(sc[7], sc[3], color); }
+            if (w2s[4] && w2s[3]) { drawLine(sc[4], sc[3], color); }
+            if (w2s[4] && w2s[2]) { drawLine(sc[4], sc[2], color); }
+
+            if (w2s[6] && w2s[4]) { drawLine(sc[6], sc[4], color); }
+            if (w2s[6] && w2s[5]) { drawLine(sc[6], sc[5], color); }
+            if (w2s[3] && w2s[5]) { drawLine(sc[3], sc[5], color); }
+
+            if (w2s[5] && w2s[0]) { drawLine(sc[5], sc[0], color); }
+        }
+        if (w2s[6] && w2s[1]) { drawLine(sc[6], sc[1], color); }
+
     }
-
-    D3DXVECTOR2  vert[2];
-
-    //D3DCOLOR color = D3DCOLOR_ARGB(255, 0, 255, 0);
-
-    /*
-    if (!settings.bDebug) {
-
-        if (w2s[0] && w2s[1]) { drawLine(sc[0], sc[1], color); }
-        if (w2s[2] && w2s[1]) { drawLine(sc[2], sc[1], color); }
-        if (w2s[2] && w2s[7]) { drawLine(sc[2], sc[7], color); }
-        if (w2s[7] && w2s[0]) { drawLine(sc[7], sc[0], color); }
+    else {        
 
 
+//draw front face:
+            drawLine3D(points[4], points[3], color);//top
+            drawLine3D(points[6], points[4], color);//left
+            drawLine3D(points[6], points[5], color);//bottom
+            drawLine3D(points[3], points[5], color);//right
+            
 
-        if (w2s[7] && w2s[3]) { drawLine(sc[7], sc[3], color); }
-        if (w2s[4] && w2s[3]) { drawLine(sc[4], sc[3], color); }
-        if (w2s[4] && w2s[2]) { drawLine(sc[4], sc[2], color); }
 
-        if (w2s[6] && w2s[4]) { drawLine(sc[6], sc[4], color); }
-        if (w2s[6] && w2s[5]) { drawLine(sc[6], sc[5], color); }
-        if (w2s[3] && w2s[5]) { drawLine(sc[3], sc[5], color); }
+//draw back face:            
+            drawLine3D(points[2], points[7], color);//top
+            drawLine3D(points[2], points[1], color);//left
+            drawLine3D(points[0], points[1], color);//bottom
+            drawLine3D(points[7], points[0], color);//right
+            
 
-        if (w2s[5] && w2s[0]) { drawLine(sc[5], sc[0], color); }
+
+//connect back to front:
+            drawLine3D(points[4], points[2], color);//left top
+            drawLine3D(points[6], points[1], color);//left bottom     
+            drawLine3D(points[7], points[3], color);//right top
+            drawLine3D(points[5], points[0], color);//right bottom
+        
+
+
     }
-    if (w2s[6] && w2s[1]) { drawLine(sc[6], sc[1], color); }
-
-    */
-
-    if (!settings.bDebug) {
-        drawLine3D(points[0], points[1], color);
-        drawLine3D(points[2], points[1], color);
-        drawLine3D(points[2], points[7], color);
-        drawLine3D(points[7], points[0], color);
-             
-             
-             
-        drawLine3D(points[7], points[3], color);
-        drawLine3D(points[4], points[3], color);
-        drawLine3D(points[4], points[2], color);
-                
-        drawLine3D(points[6], points[4], color);
-        drawLine3D(points[6], points[5], color);
-        drawLine3D(points[3], points[5], color);
-
-        drawLine3D(points[5], points[0], color);
-    }
-    drawLine3D(points[6], points[1], color);
-                                                            
-
 
 
 
@@ -508,21 +508,28 @@ HRESULT __stdcall hookedEndScene(IDirect3DDevice9* pDevice) {
     line->SetWidth(settings.line_width);
 
     vec3 size = { 0.5, 0.5, 0.5 };
-    vec3 scale = { 1.93, 1.42, 2.61 };
+    //vec3 scale = { 1.93, 1.42, 2.61 };
 
 
 
     for (int i = 0; i <= trigger_count - 1; i++) {
-
-
         if (settings.maxRenderDistance > 0 && trigger_list[i].distance > settings.maxRenderDistance)
             continue;
+
 
         int x, y, w, h;
         D3DCOLOR color;
         vec2 sc;
-        // vec2 sc2;
-         //if (!WorldToScreen(trigger_list[i].pos, (float*)a_view_matrix, &sc, ww, wh))
+        //darw boxes:
+
+        if (trigger_list[i].triggered == 1)
+            color = D3DCOLOR_ARGB(255, 0, 0, 255);
+        else
+            color = D3DCOLOR_ARGB(255, 0, 255, 0);
+        vec3 c1 = trigger_list[i].pos - size;
+        vec3 c2 = trigger_list[i].pos + size;
+        drawBoxRotated(c1, c2, trigger_list[i].pos, trigger_list[i].scale, trigger_list[i].rotation, color);
+        //draw text:
         if (!WorldToScreenW(trigger_list[i].pos, sc))
             continue;
 
@@ -531,14 +538,9 @@ HRESULT __stdcall hookedEndScene(IDirect3DDevice9* pDevice) {
         w = 100;
         h = 20;
 
-        if (trigger_list[i].triggered == 1)
-            color = D3DCOLOR_ARGB(255, 0, 0, 255);
-        else
-            color = D3DCOLOR_ARGB(255, 0, 255, 0);
 
-        //sc2.x = sc.x + 1;
-       // sc2.y = sc.y + 1;
-        //drawLine(sc,sc2, D3DCOLOR_ARGB(255, 0, 255,0));
+
+
 
         SetRect(&textRectangle, x, y, x + w, y + h);
         font->DrawText(NULL, trigger_list[i].ID, -1, &textRectangle, DT_NOCLIP | DT_LEFT, D3DCOLOR_ARGB(255, 255, 0, 66)); //draw text;
@@ -547,21 +549,8 @@ HRESULT __stdcall hookedEndScene(IDirect3DDevice9* pDevice) {
         SetRect(&textRectangle, x, y, x + w, y + h);
         font->DrawText(NULL, trigger_list[i].type, -1, &textRectangle, DT_NOCLIP | DT_LEFT, D3DCOLOR_ARGB(255, 255, 0, 66)); //draw text;
 
-        /*distance text
-        y += 20;
-        char tempDist[20];
-        sprintf_s(tempDist,19, "%.2f", trigger_list[i].distance);
-        SetRect(&textRectangle, x, y, x + w, y + h);
-        font->DrawText(NULL, tempDist, -1, &textRectangle, DT_NOCLIP | DT_LEFT, D3DCOLOR_ARGB(255, 255, 0, 66)); //draw text;
-        */
 
-        //font->DrawText(NULL, "Press Numpad0 to Exit", -1, &textRectangle, DT_NOCLIP | DT_LEFT, D3DCOLOR_ARGB(255, 153, 255, 153)); //draw text;
-
-
-        //darw boxes::
-        vec3 c1 = trigger_list[i].pos - size;
-        vec3 c2 = trigger_list[i].pos + size;
-        drawBoxRotated(c1, c2, trigger_list[i].pos, trigger_list[i].scale, trigger_list[i].rotation, color);
+        
     }
 
 
@@ -650,6 +639,11 @@ DWORD WINAPI Menue(HINSTANCE hModule) {
             settings.bDebug = !settings.bDebug;
             std::cout << "debug  " << (settings.bDebug ? "enabled\n" : "disabled\n");
         }
+        if (GetAsyncKeyState(VK_F4) & 1) {
+            settings.bUseOldSchoolRendering = !settings.bUseOldSchoolRendering;
+            std::cout << "Old school rendering  " << (settings.bUseOldSchoolRendering ? "enabled\n" : "disabled\n");
+        }
+
         if (GetAsyncKeyState(VK_UP) & 1) {
             settings.line_width++;
         }
