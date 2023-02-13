@@ -1,9 +1,9 @@
 // dllmain.cpp : Defines the entry point for the DLL application.
-
 #include "pch.h"
 #include <iostream>
 #include <d3d9.h>
 #include <d3dx9.h>
+
 #include "detours.h"
 #include "offsets.h"
 
@@ -60,30 +60,14 @@ IDirect3DDevice9* GLOBAL_pDevice;
 
 
 
-//TODO, IMPLEMENT DYNAMIC MATRIX_CONSTANT, it is resolution/fov based. FOV: 75.0, resoltuon: 942 x 649
+//Implies 75 fov:
 D3DXMATRIX matrix_constant = { 0.5904204249f, 0.000000000f, 0.00000000000f, 0.00000000f,
                                0.00000000f, CONST_FOV, 0.00000000000f, 0.00000000f,
                                0.00000000f, 0.000000000f, 1.00010001700f, 1.00000000f,
                                0.00000000f, 0.000000000f, -0.1200120002f, 0.00000000f };
 
 
-/*
-x and y are based off of fov and width/height
-1.309 = 75�
-w:942
-x grows smaller as fov and width grow bigger
 
-    {   x      , 0.000000000f, 0.00000000000f, 0.00000000f,
-    0.00000000f,     y       , 0.00000000000f, 0.00000000f,
-    0.00000000f, 0.000000000f, 1.00010001700f, 1.00000000f,
-    0.00000000f, 0.000000000f, -0.1200120002f, 0.00000000f};
-
-///
-1862*667 @ 90�
-x:0.4535177946
-y:1.333111286
-
-*/
 D3DXMATRIX* matrix_test = (D3DXMATRIX*)0x60989FC8;
 
 struct vec4 {
@@ -127,9 +111,12 @@ struct exodus_trigger {
     vec3 scale;
     float rotation;
     float distance;
-    char* ID;
-    char* type;
+  
     int32_t triggered;
+  
+    char ID[100] = "UNKOWN_ID";
+    char type[100] = "UNKOWN_TYPE";
+
 };
 
 struct position_matrix { //This could be made into a 4x4 matrix for cleaner code
@@ -143,10 +130,11 @@ struct position_matrix { //This could be made into a 4x4 matrix for cleaner code
 };
 
 struct exodus_naitive_sens {
-    /*+0x000*/ DWORD unknown1[20];
-    /*+0x050*/ char* string_id;//0x50
-    /*+0x054*/ DWORD unknown2[14];
-    /*+0x088*/ char* string_type;//0x88
+
+    DWORD unkown1[20];
+    char* string_id;//0x50
+    DWORD unkown2[13];
+    char* string_type;//0x88
 };
 
 struct exodus_naitive_trigger {
@@ -192,9 +180,10 @@ unsigned int __stdcall hookedLoopTop(int a1, int a2, int a3) {//a3 is what we ne
             std::cout << "error calculated size (" << size << ") is bigger than the array \n";
         }
     }
-    vec3 playerpos = { 0, 0, 0 };
-    if (*(int*)0x60978CE0 && **(int**)0x60978CE0) {
-        float* playerpos_tmp = (float*)((**(int**)0x60978CE0) + 0x228);
+  
+    vec3 playerpos = {0, 0, 0};
+    if (*(int*)a_player_pos && **(int**)a_player_pos) {
+        float* playerpos_tmp = (float*)((**(int**)a_player_pos) + 0x228);
 
         playerpos.x = playerpos_tmp[0];
         playerpos.y = playerpos_tmp[4];
@@ -224,18 +213,15 @@ unsigned int __stdcall hookedLoopTop(int a1, int a2, int a3) {//a3 is what we ne
         trigger_list[i].scale.z = sqrtf(pow(sensor->position.d.x, 2) + pow(sensor->position.d.y, 2) + pow(sensor->position.d.z, 2));
 
         trigger_list[i].rotation = atan2f(sensor->position.w.z, sensor->position.w.x);
+        trigger_list[i].triggered = sensor->triggered;
 
-
-
-        trigger_list[i].ID = (char*)"----UNKOWN_ID----";
-        trigger_list[i].type = (char*)"---UNKOWN_TYPE---";
 
         if (sensor->sens) {
             exodus_naitive_sens* sens = *(sensor->sens);
             if (sens) {
-                trigger_list[i].ID = sens->string_id;
-                trigger_list[i].type = sens->string_type;
-                trigger_list[i].triggered = sensor->triggered;
+                strcpy_s(trigger_list[i].ID  , 99, sens->string_id);
+                strcpy_s(trigger_list[i].type, 99, sens->string_type);                
+
             }
         }
 
@@ -315,6 +301,25 @@ void rotate_y(vec3& point, vec3 pivot, float rotation) {
     point.z = n.z;
 }
 
+
+void findScreenPosition(vec3 good, vec3 bad, vec2 &out) {
+    vec2 sc;
+    if (WorldToScreenW(bad, sc)) {
+        out.x = sc.x;
+        out.y = sc.y;
+        return;
+    }
+
+    vec3 d;
+    d = bad - good;
+    bad.x = good.x + d.x / 2;
+    bad.y = good.y + d.y / 2;
+    bad.z = good.z + d.z / 2;
+    findScreenPosition(good, bad, out);
+
+
+}
+
 void drawLine(vec2 a, vec2 b, D3DCOLOR color) {
     if (settings.bDebug && !(a.x >= 0 && a.x <= ww && a.y >= 0 && a.y <= wh && b.x >= 0 && b.x <= ww && b.y >= 0 && b.y <= wh))
         printf("x1: %.2f, y1: %.2f  ---  x2: %.2f, y2: %.2f  --- W:%i, %H:%i\n", a.x, a.y, b.x, b.y, ww, wh);
@@ -324,6 +329,40 @@ void drawLine(vec2 a, vec2 b, D3DCOLOR color) {
     D3DXVECTOR2  vert[2] = { D3DXVECTOR2{(float)a.x,(float)a.y}, D3DXVECTOR2{(float)b.x, (float)b.y} };
     line->Draw(vert, 2, color);
 }
+
+void drawLine3D(vec3 a, vec3 b, D3DCOLOR color) {
+    vec2 a_out, b_out;
+    bool w2s_a, w2s_b;
+    
+    w2s_a = WorldToScreenW(a, a_out);
+    w2s_b = WorldToScreenW(b, b_out);
+
+    if (!w2s_a && !w2s_b)
+        return;
+    if (w2s_a && w2s_b) {
+        drawLine(a_out, b_out, color);
+        return;
+    }
+
+    vec3 good_point, bad_point;
+    vec2 screen, good_screen;
+    if (w2s_a) {
+        good_point = a;
+        good_screen = a_out;
+        bad_point = b;
+    }
+    else {
+        good_point = b;
+        good_screen = b_out;
+        bad_point = a;
+    }
+
+    findScreenPosition(good_point, bad_point, screen);
+
+    drawLine(screen, good_screen, color);
+}
+
+
 
 
 void drawBoxRotated(vec3 RightTopFront, vec3 LeftBottomBack, vec3 pivot, vec3 scale, float rotation, D3DCOLOR color) {
@@ -384,6 +423,7 @@ void drawBoxRotated(vec3 RightTopFront, vec3 LeftBottomBack, vec3 pivot, vec3 sc
 
     //D3DCOLOR color = D3DCOLOR_ARGB(255, 0, 255, 0);
 
+    /*
     if (!settings.bDebug) {
 
         if (w2s[0] && w2s[1]) { drawLine(sc[0], sc[1], color); }
@@ -404,6 +444,30 @@ void drawBoxRotated(vec3 RightTopFront, vec3 LeftBottomBack, vec3 pivot, vec3 sc
         if (w2s[5] && w2s[0]) { drawLine(sc[5], sc[0], color); }
     }
     if (w2s[6] && w2s[1]) { drawLine(sc[6], sc[1], color); }
+
+    */
+
+    if (!settings.bDebug) {
+        drawLine3D(points[0], points[1], color);
+        drawLine3D(points[2], points[1], color);
+        drawLine3D(points[2], points[7], color);
+        drawLine3D(points[7], points[0], color);
+             
+             
+             
+        drawLine3D(points[7], points[3], color);
+        drawLine3D(points[4], points[3], color);
+        drawLine3D(points[4], points[2], color);
+                
+        drawLine3D(points[6], points[4], color);
+        drawLine3D(points[6], points[5], color);
+        drawLine3D(points[3], points[5], color);
+
+        drawLine3D(points[5], points[0], color);
+    }
+    drawLine3D(points[6], points[1], color);
+                                                            
+
 
 
 
@@ -483,7 +547,7 @@ HRESULT __stdcall hookedEndScene(IDirect3DDevice9* pDevice) {
         SetRect(&textRectangle, x, y, x + w, y + h);
         font->DrawText(NULL, trigger_list[i].type, -1, &textRectangle, DT_NOCLIP | DT_LEFT, D3DCOLOR_ARGB(255, 255, 0, 66)); //draw text;
 
-        /*draw distance
+        /*distance text
         y += 20;
         char tempDist[20];
         sprintf_s(tempDist,19, "%.2f", trigger_list[i].distance);
@@ -499,6 +563,10 @@ HRESULT __stdcall hookedEndScene(IDirect3DDevice9* pDevice) {
         vec3 c2 = trigger_list[i].pos + size;
         drawBoxRotated(c1, c2, trigger_list[i].pos, trigger_list[i].scale, trigger_list[i].rotation, color);
     }
+
+
+
+    //try to render in 3d space:
 
 
     return pEndScene(pDevice); // call original endScene 
@@ -638,4 +706,6 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReser
         break;
     }
     return TRUE;
+
 }
+
