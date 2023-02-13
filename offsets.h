@@ -12,3 +12,4 @@ DWORD a_func_EnumTriggers = 0x1CF730;//function (int a1, int a2, int a_TriggerLi
 DWORD a_view_matrix = 0x609AD4B0;
 DWORD a_hook_loop_top = 0x601CF730;//top of func a3 should be the thing we need
 DWORD a_VM_FIX_PATCH = 0x605D1900;//dirty fix:need to patch this to "mov ax, 4" in order to fix the matrix
+DWORD a_player_pos = 0x60978CE0;
