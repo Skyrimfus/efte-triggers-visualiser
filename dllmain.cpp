@@ -307,6 +307,7 @@ void rotate_y(vec3& point, vec3 pivot, float rotation) {
 /// <param name="out">Outgoing screen poistion</param>
 void findScreenPosition(vec3 good, vec3 bad, vec2& out) {
     vec2 sc;
+
     if (WorldToScreenW(bad, sc)) {
         out.x = sc.x;
         out.y = sc.y;
