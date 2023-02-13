@@ -194,7 +194,7 @@ unsigned int __stdcall hookedLoopTop(int a1, int a2, int a3) {//a3 is what we ne
 
     }
 
-    for (int i = 0; i <= size; i++) {
+    for (int i = 0; i <= size-1; i++) {
         exodus_naitive_trigger* sensor = naitive_list[i];
         if (!sensor)
             continue;
@@ -240,10 +240,11 @@ unsigned int __stdcall hookedLoopTop(int a1, int a2, int a3) {//a3 is what we ne
 
 
 
+D3DXMATRIX matrix_temp;
 bool WorldToScreen(vec3 pos, float* matrix, vec2& out, int windowWidth, int windowHeight) {
+    
 
-
-    D3DXMATRIX matrix_temp;
+    
     memcpy(matrix_temp, matrix_test, sizeof(D3DXMATRIX));
     MatrixCalc((float*)matrix_temp, (float*)matrix_temp, (float*)matrix_constant);
 
