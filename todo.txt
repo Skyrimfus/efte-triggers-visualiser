@@ -1,0 +1,4 @@
+1. Implement a render buffer and sort it by z depth in order to render from back to front for more clarity
+2. Find traceline func and implement a visibility check. add an option to only render "visible" triggers
+3. Implement a finer findScreenPosition algorith
+4. Option to log triggers to buffer and draw from this buffer
