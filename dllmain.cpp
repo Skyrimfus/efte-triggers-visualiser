@@ -76,14 +76,14 @@ IDirect3DDevice9* GLOBAL_pDevice;
 
 
 //Implies 75 fov:
-D3DXMATRIX matrix_constant = { 0.5904204249f, 0.000000000f, 0.00000000000f, 0.00000000f,
+float matrix_constant[16] = { 0.5904204249f, 0.000000000f, 0.00000000000f, 0.00000000f,
                                0.00000000f, CONST_FOV, 0.00000000000f, 0.00000000f,
                                0.00000000f, 0.000000000f, 1.00010001700f, 1.00000000f,
                                0.00000000f, 0.000000000f, -0.1200120002f, 0.00000000f };
 
 
 
-D3DXMATRIX* matrix_test = (D3DXMATRIX*)0x60989FC8;
+float* matrix_test = (float*)0x60989FC8;
 
 struct vec4 {
     float x, y, z, w;
@@ -163,10 +163,6 @@ struct exodus_naitive_trigger {
 
 int trigger_count = 0;
 struct exodus_trigger trigger_list[MAX_LIST_SIZE];
-
-
-
-
 
 
 
@@ -252,15 +248,14 @@ unsigned int __stdcall hookedLoopTop(int a1, int a2, int a3) {//a3 is what we ne
 
 
 
-
-
-D3DXMATRIX matrix_temp;
+float matrix_temp[16];
+int szD3DMATRIX = sizeof(float[16]);
 bool WorldToScreen(vec3 pos, float* matrix, vec2& out, int windowWidth, int windowHeight) {
     
 
     
-    memcpy(matrix_temp, matrix_test, sizeof(D3DXMATRIX));
-    MatrixCalc((float*)matrix_temp, (float*)matrix_temp, (float*)matrix_constant);
+    memcpy(matrix_temp, matrix_test, szD3DMATRIX);
+    MatrixCalc(matrix_temp, matrix_temp, matrix_constant);
 
 
 
@@ -322,49 +317,23 @@ void rotate_y(vec3& point, vec3 pivot, float rotation) {
 /// <param name="out">Outgoing screen poistion</param>
 void findScreenPosition(vec3 good, vec3 bad, vec2& out) {
     vec2 sc;
-    vec3 d;
+    vec3 d = bad - good;
     if (WorldToScreenW(bad, sc)) {
         if (sc.x < 0 || sc.x > ww || sc.y < 0 || sc.y > wh) {//it is inside w2s but outside screenspace, so it should draw perfectly
             out.x = sc.x;
             out.y = sc.y;
             return;
-        }
- 
-        d = bad - good;
+        } 
         bad.x = bad.x + d.x / 2.0f;
         bad.y = bad.y + d.y / 2.0f;
-        bad.z = bad.z + d.z / 2.0f;
-        findScreenPosition(good, bad, out);
-            
+        bad.z = bad.z + d.z / 2.0f;            
     } 
     else {
-        d = bad - good;
         bad.x = good.x + d.x / 2.0f;
         bad.y = good.y + d.y / 2.0f;
-        bad.z = good.z + d.z / 2.0f;
-        findScreenPosition(good, bad, out);
-
+        bad.z = good.z + d.z / 2.0f;      
     }
-
-    
-    /*
-    vec2 sc;
-
-    if (WorldToScreenW(bad, sc)) {
-        out.x = sc.x;
-        out.y = sc.y;
-        return;
-    }
-
-    vec3 d;
-    d = bad - good;
-    bad.x = good.x + d.x / 1.5f;
-    bad.y = good.y + d.y / 1.5f;
-    bad.z = good.z + d.z / 1.5f;
     findScreenPosition(good, bad, out);
-    */
-
-
 }
 
 void drawLine(vec2 a, vec2 b, D3DCOLOR color) {
