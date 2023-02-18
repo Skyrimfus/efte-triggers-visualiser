@@ -34,7 +34,8 @@ typedef int* __cdecl sub_60072B70(float* a1, float* a2, float* a3);
 sub_60072B70* MatrixCalc = (sub_60072B70*)0x60072B70;
 
 int ww, wh;//height and width of the window
-const char* credits = "Made by skyrimfus. Thanks to Heebo for helping me figure out rotations and view matrix hell. D3D hook by CasualGamer";
+const char* credits = "Made by skyrimfus. Thanks to Heebo for helping me figure out rotations and view matrix hell(Couldn't have done this without him)\n"
+                "Cactus for implementing the triggered color. D3D hook by CasualGamer on youtube. Made during the Cr1TiKaL's speedrun challenge.";
 
 
 
@@ -174,8 +175,6 @@ unsigned int __stdcall hookedLoopTop(int a1, int a2, int a3) {//a3 is what we ne
     if (!naitive_list)
         return pLoopTop(a1, a2, a3);//call original
 
-    if (settings.bDebug)
-        size = 0;
 
     trigger_count = 0;
     if (size > MAX_LIST_SIZE) {
@@ -317,17 +316,15 @@ void findScreenPosition(vec3 good, vec3 bad, vec2& out) {
 
     vec3 d;
     d = bad - good;
-    bad.x = good.x + d.x / 2;
-    bad.y = good.y + d.y / 2;
-    bad.z = good.z + d.z / 2;
+    bad.x = good.x + d.x / 1.5f;
+    bad.y = good.y + d.y / 1.5f;
+    bad.z = good.z + d.z / 1.5f;
     findScreenPosition(good, bad, out);
 
 
 }
 
 void drawLine(vec2 a, vec2 b, D3DCOLOR color) {
-    //if (settings.bDebug && !(a.x >= 0 && a.x <= ww && a.y >= 0 && a.y <= wh && b.x >= 0 && b.x <= ww && b.y >= 0 && b.y <= wh))
-        //printf("x1: %.2f, y1: %.2f  ---  x2: %.2f, y2: %.2f  --- W:%i, %H:%i\n", a.x, a.y, b.x, b.y, ww, wh);
     if (!settings.bDrawOffscreen && !(a.x >= 0 && a.x <= ww && a.y >= 0 && a.y <= wh && b.x >= 0 && b.x <= ww && b.y >= 0 && b.y <= wh))
         return;
 
@@ -420,25 +417,24 @@ void drawBoxRotated(vec3 RightTopFront, vec3 LeftBottomBack, vec3 pivot, vec3 sc
 
 
     if(settings.bUseOldSchoolRendering){
-        if (!settings.bDebug) {
+      
 
-            if (w2s[0] && w2s[1]) { drawLine(sc[0], sc[1], color); }
-            if (w2s[2] && w2s[1]) { drawLine(sc[2], sc[1], color); }
-            if (w2s[2] && w2s[7]) { drawLine(sc[2], sc[7], color); }
-            if (w2s[7] && w2s[0]) { drawLine(sc[7], sc[0], color); }
+        if (w2s[0] && w2s[1]) { drawLine(sc[0], sc[1], color); }
+        if (w2s[2] && w2s[1]) { drawLine(sc[2], sc[1], color); }
+        if (w2s[2] && w2s[7]) { drawLine(sc[2], sc[7], color); }
+        if (w2s[7] && w2s[0]) { drawLine(sc[7], sc[0], color); }
 
 
 
-            if (w2s[7] && w2s[3]) { drawLine(sc[7], sc[3], color); }
-            if (w2s[4] && w2s[3]) { drawLine(sc[4], sc[3], color); }
-            if (w2s[4] && w2s[2]) { drawLine(sc[4], sc[2], color); }
+        if (w2s[7] && w2s[3]) { drawLine(sc[7], sc[3], color); }
+        if (w2s[4] && w2s[3]) { drawLine(sc[4], sc[3], color); }
+        if (w2s[4] && w2s[2]) { drawLine(sc[4], sc[2], color); }
 
-            if (w2s[6] && w2s[4]) { drawLine(sc[6], sc[4], color); }
-            if (w2s[6] && w2s[5]) { drawLine(sc[6], sc[5], color); }
-            if (w2s[3] && w2s[5]) { drawLine(sc[3], sc[5], color); }
+        if (w2s[6] && w2s[4]) { drawLine(sc[6], sc[4], color); }
+        if (w2s[6] && w2s[5]) { drawLine(sc[6], sc[5], color); }
+        if (w2s[3] && w2s[5]) { drawLine(sc[3], sc[5], color); }
 
-            if (w2s[5] && w2s[0]) { drawLine(sc[5], sc[0], color); }
-        }
+        if (w2s[5] && w2s[0]) { drawLine(sc[5], sc[0], color); }        
         if (w2s[6] && w2s[1]) { drawLine(sc[6], sc[1], color); }
 
     }
@@ -517,7 +513,8 @@ HRESULT __stdcall hookedEndScene(IDirect3DDevice9* pDevice) {
     for (int i = 0; i <= trigger_count - 1; i++) {
         if (settings.maxRenderDistance > 0 && trigger_list[i].distance > settings.maxRenderDistance)
             continue;
-
+        if (settings.bDebug && trigger_list[i].ID[0] != '!')
+            continue;
 
         int x, y, w, h;
         D3DCOLOR color;
@@ -588,11 +585,20 @@ void hookEndScene() {
     pEndScene = (endScene)DetourFunction((PBYTE)vTable[42], (PBYTE)hookedEndScene);
 
     //get window size:
-    wnd = FindWindowA(NULL, "Exodus from the earth");
     RECT cl;
-    GetClientRect(wnd, &cl);
-    ww = cl.right - cl.left;
-    wh = cl.bottom - cl.top;
+    wnd = FindWindowA(NULL, "Exodus from the earth");       
+    // GetClientRect(wnd, &cl);                        
+    GetWindowRect(wnd, &cl);
+    if (cl.left < -1 || cl.top < -1) {//game is fullscreen:
+        ww = GetSystemMetrics(SM_CXSCREEN);
+        wh = GetSystemMetrics(SM_CYSCREEN);
+    }
+    else {//game is windowed:
+        ww = cl.right - cl.left;
+        wh = cl.bottom - cl.top;
+    }
+
+
 
 
 
