@@ -16,6 +16,15 @@
 #define MAX_LIST_SIZE 10000//lol
 #define CONST_FOV 1.736801744f//use fov 75
 #define STEP_DEFAULT 0.1f
+#define MENU_TYPE_BOOL 0
+#define MENU_TYPE_INT 1
+#define MENU_TYPE_FLOAT 2
+
+
+#define MENU_COLOR_RED D3DCOLOR_ARGB(255, 255, 0, 0)
+#define MENU_COLOR_GREEN D3DCOLOR_ARGB(255, 0, 255, 0)
+#define MENU_COLOR_BLUE D3DCOLOR_ARGB(255, 0, 0, 255)
+#define MENU_COLOR_YELLOW D3DCOLOR_ARGB(255, 255, 255, 0)
 
 HINSTANCE DllHandle;
 DWORD BASE;
@@ -40,6 +49,7 @@ const char* credits = "Made by skyrimfus. Thanks to Heebo for helping me figure 
 
 
 struct sSettings {
+    bool bInMenu;
     bool bDraw;//controls whether the triggers should be drawn or not
     bool bDrawOffscreen;//should we draw points that go offscreen?
     bool bDebug; //enable debug info, limit to 1 line render on only 1 trigger(the first)
@@ -50,6 +60,7 @@ struct sSettings {
 };
 
 sSettings settings = {
+    false,//bInMenu
     true,//bDraw
     true,//bDrawOffscreen
     false,//bDebug
@@ -152,6 +163,10 @@ struct exodus_naitive_trigger {
 
 int trigger_count = 0;
 struct exodus_trigger trigger_list[MAX_LIST_SIZE];
+
+
+
+
 
 
 
@@ -307,6 +322,33 @@ void rotate_y(vec3& point, vec3 pivot, float rotation) {
 /// <param name="out">Outgoing screen poistion</param>
 void findScreenPosition(vec3 good, vec3 bad, vec2& out) {
     vec2 sc;
+    vec3 d;
+    if (WorldToScreenW(bad, sc)) {
+        if (sc.x < 0 || sc.x > ww || sc.y < 0 || sc.y > wh) {//it is inside w2s but outside screenspace, so it should draw perfectly
+            out.x = sc.x;
+            out.y = sc.y;
+            return;
+        }
+ 
+        d = bad - good;
+        bad.x = bad.x + d.x / 2.0f;
+        bad.y = bad.y + d.y / 2.0f;
+        bad.z = bad.z + d.z / 2.0f;
+        findScreenPosition(good, bad, out);
+            
+    } 
+    else {
+        d = bad - good;
+        bad.x = good.x + d.x / 2.0f;
+        bad.y = good.y + d.y / 2.0f;
+        bad.z = good.z + d.z / 2.0f;
+        findScreenPosition(good, bad, out);
+
+    }
+
+    
+    /*
+    vec2 sc;
 
     if (WorldToScreenW(bad, sc)) {
         out.x = sc.x;
@@ -320,6 +362,7 @@ void findScreenPosition(vec3 good, vec3 bad, vec2& out) {
     bad.y = good.y + d.y / 1.5f;
     bad.z = good.z + d.z / 1.5f;
     findScreenPosition(good, bad, out);
+    */
 
 
 }
@@ -476,10 +519,115 @@ void drawBoxRotated(vec3 RightTopFront, vec3 LeftBottomBack, vec3 pivot, vec3 sc
 }
 
 
+struct sMenuItem {
+    const char* text;
+    void* value;
+    int type;//0 = bool, 1 = number,
+};
+
+
+sMenuItem menu[] = {
+    {" (F1) Draw triggers", (bool*)(&(settings.bDraw)), MENU_TYPE_BOOL},
+    {" (F2)Show lines with an off-screen point", (bool*)(&(settings.bDrawOffscreen)), MENU_TYPE_BOOL},
+    {" Line width", (int*)(&(settings.line_width)), MENU_TYPE_INT},
+    {" Render distance", (float*)(&(settings.maxRenderDistance)), MENU_TYPE_FLOAT},
+    {" (F3)Debug enabled", (float*)(&(settings.bDebug)), MENU_TYPE_BOOL},
+    {" (F4)Use old-school rendering method", (float*)(&(settings.bUseOldSchoolRendering)), MENU_TYPE_BOOL},
+};
+int szMenu = sizeof(menu) / sizeof(sMenuItem);
+int menuIndex = 0;
+
+
+
+void DrawMenu(IDirect3DDevice9* pDevice) {
+    if (!settings.bInMenu)
+        return;
+
+    int x, y, w, h;
+    x = 0; y = 0;
+    w = 360; h = 500;
+
+
+    D3DRECT rect = { x, y, x + w, y + h };
+    pDevice->Clear(1, &rect, D3DCLEAR_TARGET, D3DCOLOR_ARGB(100, 0, 0, 0), 0.0f, 0); // this draws a rectangle
+
+    if (!font)
+        D3DXCreateFont(pDevice, 16, 0, FW_BOLD, 1, 0, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, "Arial", &font);
+
+
+
+
+    RECT tRect;
+    x += 5;//padding
+    y += 5;//padding
+    SetRect(&tRect, x, y, 0, 0);
+    font->DrawText(NULL, "Skyrimfus' Triggers-Visualizer", -1, &tRect, DT_NOCLIP | DT_LEFT, D3DCOLOR_ARGB(255, 255, 0, 66)); //draw text;;
+
+    
+    char drawText[100];
+    char valueText[100];
+
+    D3DCOLOR color;
+    for (int i = 0; i< szMenu; i++) {    
+        strcpy_s(drawText, 99, menu[i].text);
+        if (i == menuIndex) {
+            drawText[0] = '>';
+            color = MENU_COLOR_GREEN;
+        }
+        else {
+            drawText[0] = ' ';
+            color = MENU_COLOR_YELLOW;
+        }
+                
+
+        y += 20;
+        SetRect(&tRect, x, y, 0, 0);
+        font->DrawText(NULL, drawText, -1, &tRect, DT_CALCRECT, 0); //calc text width;;
+        font->DrawText(NULL, drawText, -1, &tRect, DT_NOCLIP | DT_LEFT, color); //draw text;;
+
+
+        switch (menu[i].type) {
+        case MENU_TYPE_BOOL: {
+                bool val = *(bool*)(menu[i].value);
+                if (val) {
+                    color = MENU_COLOR_GREEN;
+                    sprintf_s(valueText, 99, "YES");
+                }
+                else {
+                    color = MENU_COLOR_RED;
+                    sprintf_s(valueText, 99, "NO");
+                }
+                break;
+            }
+            case MENU_TYPE_INT: {
+
+                int val = *(int*)(menu[i].value);
+                color = MENU_COLOR_GREEN;
+                sprintf_s(valueText, 99, "%i", val);
+                break;
+            }
+            case MENU_TYPE_FLOAT: {
+
+                float val = *(float*)(menu[i].value);
+                (val <= 0) ? color = MENU_COLOR_RED : color = MENU_COLOR_GREEN;
+                sprintf_s(valueText, 99, "%.2f", val);
+                break;
+            }
+        }
+
+        SetRect(&tRect, tRect.right+5, y, 0, 0);
+        font->DrawText(NULL, valueText, -1, &tRect, DT_NOCLIP | DT_LEFT, color); //draw value;;
+
+    }
+
+
+}
 
 HRESULT __stdcall hookedEndScene(IDirect3DDevice9* pDevice) {
-    if (!settings.bDraw)
+    if (!settings.bDraw) {
+        DrawMenu(pDevice);
         return pEndScene(pDevice); // call original endScene 
+    }
     GLOBAL_pDevice = pDevice;
 
     D3DVIEWPORT9 Viewport;
@@ -552,11 +700,7 @@ HRESULT __stdcall hookedEndScene(IDirect3DDevice9* pDevice) {
         
     }
 
-
-
-    //try to render in 3d space:
-
-
+    DrawMenu(pDevice);
     return pEndScene(pDevice); // call original endScene 
 }
 
@@ -629,12 +773,67 @@ DWORD WINAPI Menue(HINSTANCE hModule) {
     bool bVmPatched = false;
 
     while (true) {
-        Sleep(50);
+        Sleep(1);
         if (GetAsyncKeyState(VK_NUMPAD0)) {
             DetourRemove((PBYTE)pEndScene, (PBYTE)hookedEndScene); //unhook to avoid game crash
             DetourRemove((PBYTE)pLoopTop, (PBYTE)hookedLoopTop); //unhook to avoid game crash
             break;
         }
+        if (GetAsyncKeyState(VK_INSERT) & 1) {
+            settings.bInMenu = !settings.bInMenu;
+            std::cout << "Menu is " << (settings.bInMenu ? "enabled\n" : "disabled\n");
+        }
+        if (settings.bInMenu && GetAsyncKeyState(VK_UP) & 1) {
+            menuIndex = (menuIndex - 1) % szMenu;
+            if (menuIndex == -1)
+                menuIndex = szMenu - 1;
+            printf("selected menu index: %i\n", menuIndex);
+        }
+        if (settings.bInMenu && GetAsyncKeyState(VK_DOWN) & 1) {
+            menuIndex = (menuIndex + 1) % szMenu;
+            printf("selected menu index: %i\n", menuIndex);
+        }
+
+        
+        SHORT vkleft = GetAsyncKeyState(VK_LEFT);
+        SHORT vkright = GetAsyncKeyState(VK_RIGHT);
+        if (settings.bInMenu && (vkleft&1 || vkright&1)) {
+            switch (menu[menuIndex].type)
+            {
+            case MENU_TYPE_BOOL:
+                *(bool*)menu[menuIndex].value = !*(bool*)menu[menuIndex].value;
+                break;
+            case MENU_TYPE_INT: {
+                int val = *(int*)menu[menuIndex].value;
+                int step;
+                vkleft ? step = -1 : step = 1;
+                val += step;
+                if (val < 0)
+                    val = 0;
+                if (val > 100)
+                    val = 100;
+                *(int*)menu[menuIndex].value = val;
+                break;
+            }
+            case MENU_TYPE_FLOAT: {
+                float val = *(float*)menu[menuIndex].value;
+                float step;
+                vkleft ? step = -STEP_DEFAULT : step = STEP_DEFAULT;
+                if (GetAsyncKeyState(VK_SHIFT))
+                    step *= 5;
+                val += step;
+                if (val < -STEP_DEFAULT)
+                    val = -STEP_DEFAULT;
+                *(float*)menu[menuIndex].value = val;
+            }
+            default:
+                break;
+            }
+        }
+        
+
+
+        
         if (GetAsyncKeyState(VK_F1) & 1) {
             settings.bDraw = !settings.bDraw;
             std::cout << "Drawing is " << (settings.bDraw ? "enabled\n" : "disabled\n");
@@ -652,32 +851,7 @@ DWORD WINAPI Menue(HINSTANCE hModule) {
             std::cout << "Old school rendering  " << (settings.bUseOldSchoolRendering ? "enabled\n" : "disabled\n");
         }
 
-        if (GetAsyncKeyState(VK_UP) & 1) {
-            settings.line_width++;
-        }
-        if (GetAsyncKeyState(VK_DOWN) & 1 && settings.line_width > 0) {
-            settings.line_width--;
-        }
-        if (GetAsyncKeyState(VK_LEFT) & 1) {
-            float step = -STEP_DEFAULT;
-            if (GetAsyncKeyState(VK_CONTROL))
-                step *= 10;
-            if (GetAsyncKeyState(VK_SHIFT))
-                step *= 100;
-
-            settings.maxRenderDistance += step;
-            printf("Render distance: %.2f\n", settings.maxRenderDistance);
-        }
-        if (GetAsyncKeyState(VK_RIGHT) & 1) {
-            float step = STEP_DEFAULT;
-            if (GetAsyncKeyState(VK_CONTROL))
-                step *= 10;
-            if (GetAsyncKeyState(VK_SHIFT))
-                step *= 100;
-
-            settings.maxRenderDistance += step;
-            printf("Render distance: %.2f\n", settings.maxRenderDistance);
-        }
+        
 
         /*
         if (!bVmPatched && GetAsyncKeyState(VK_F2)) {
